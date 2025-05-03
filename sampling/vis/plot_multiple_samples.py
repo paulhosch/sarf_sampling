@@ -120,20 +120,14 @@ def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custo
     width_km = lon_diff * km_per_lon_degree
     height_km = lat_diff * km_per_lat_degree
     
-    # Format the dimensions for display
-    # For PlateCarree projection, report that these are degree dimensions converted to approx. ground distances
-    if width_km < 1 or height_km < 1:
-        # Use meters if less than 1 km
+    # Format the width dimension for display
+    if width_km < 1:
         width_m = width_km * 1000
-        height_m = height_km * 1000
-        # Report both degree dimensions and their ground distance equivalent
-        extent_dimensions = f"{lon_diff:.4f}°×{lat_diff:.4f}° ({width_m:.0f}×{height_m:.0f} m)"
-    elif width_km < 10 or height_km < 10:
-        # Use 1 decimal place for small values
-        extent_dimensions = f"{lon_diff:.4f}°×{lat_diff:.4f}° ({width_km:.1f}×{height_km:.1f} km)"
+        extent_dimensions = f"{width_m:.0f} m"
+    elif width_km < 10:
+        extent_dimensions = f"{width_km:.1f} km" 
     else:
-        # Round to nearest km for larger values
-        extent_dimensions = f"{lon_diff:.4f}°×{lat_diff:.4f}° ({width_km:.0f}×{height_km:.0f} km)"
+        extent_dimensions = f"{width_km:.0f} km"
     
     # Calculate layout
     n_samples = len(sample_paths)
@@ -173,9 +167,6 @@ def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custo
         mpatches.Patch(color=OSM_WATER_CMAP(1), label='OSM Water (excluded)')
     ]
     
-    water_legend_items = [
-       
-    ]
     
     # Define colors and labels for different grid types
     grid_colors = {
@@ -366,9 +357,9 @@ def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custo
             gl.xlocator = mticker.LinearLocator(3) 
             gl.ylocator = mticker.LinearLocator(3)  
             
-            # Increase font size for lat/lon labels
+            # Increase font size and rotate labels
             gl.xlabel_style = {'size': AXIS_LABEL_SIZE}
-            gl.ylabel_style = {'size': AXIS_LABEL_SIZE}
+            gl.ylabel_style = {'size': AXIS_LABEL_SIZE, 'rotation': 90}
         else:
             # No gridlines for all subplots
             ax.gridlines(draw_labels=False, linewidth=0, linestyle='', alpha=0)
@@ -426,34 +417,37 @@ def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custo
     legend_columns = [
         sample_legend_items,       # Column 1: Sample types
         stratum_legend_items,      # Column 2: Stratum types 
-        water_legend_items,        # Column 3: Water  
-        grid_legend_items          # Column 4: Grid types
+        grid_legend_items          # Column 3: Grid types
     ]
     
-    # Create extent dimensions legend item
+    # Create extent dimensions and dMIN legend items
     extent_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='none',
-                               label=f"Plot Size: {extent_dimensions}", markersize=0)
-    
-    # Add extent dimensions to legend elements
-    extent_legend_items = [extent_legend]
+                               label=f"Subplot Width: {extent_dimensions}", markersize=0)
+    n_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='none',
+                             label=f"nF, nNF: sample counts", markersize=0)
+    dmin_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='none',
+                             label=f"dMin: min sample spacing", markersize=0)
+
+    # Add extent dimensions and dMIN to legend elements
+    extent_legend_items = [extent_legend, n_legend, dmin_legend]
     legend_columns.append(extent_legend_items)
     
-    # Flatten legend elements for use in legend
+    # Combine all legend elements
     legend_elements = []
     for column in legend_columns:
         legend_elements.extend(column)
     
     # Add a single legend at the bottom of the figure with column organization
     legend = fig.legend(handles=legend_elements, 
-                  loc='upper center', 
-                  bbox_to_anchor=(0.5, -0.2), 
-                  ncol=3, 
+                  loc='lower center', 
+                  bbox_to_anchor=(0.5, 0),  # Moved closer to bottom
+                  ncol=len(legend_columns),     # Adjust number of columns based on content
                   fontsize=LEGEND_TEXT_SIZE,
                   columnspacing=1.0,
-                  frameon=True, 
+                  frameon=False, 
                   framealpha=1.0,
                   edgecolor='black',
-                  facecolor='white',
+                  facecolor='none',
                   borderpad=0.8,
                   labelspacing=0.8,
                   handletextpad=0.5)
