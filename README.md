@@ -1,34 +1,32 @@
 # saRFlood Sampling
 
-A Python package for geospatial sampling strategies focused on flood detection and analysis.
+This repository contains functionalities for the 2. part of the saRFlood pipeline - Sampling from the input_image.
+Following Sampling Strategies can be used:
 
-## Overview
+- Simple Random Sampling
+- Stratified Sampling
+- Generalized Random Tessellation Stratified (GRTS) Sampling
+- Systematic Square Grid Sampling
 
-This package provides tools for various sampling strategies in geospatial applications, including:
+To compare different the different class and spatial distributions, the following sample sets can be created and plotted:
 
-- Stratified sampling
-- GRTS (Generalized Random Tessellation Stratified) sampling integration
-- Visualization of sampling results
+//Image (insert later)
 
-## Installation
+Data Source: (c) OpenStreetMap contributors and (c) European Union, Copernicus Emergency
 
-```bash
-pip install -r requirements.txt
-```
+## References
 
-## Usage
+Used packages:
 
-See the pipeline.py file for example usage.
+- PyGRTS: Copyright (c) 2020-- pygrts
 
-## Repository Structure
-
-- `sampling/`: Main package
-  - `io/`: Input/output handling
-  - `processing/`: Data processing
-  - `strategies/`: Sampling strategy implementations
-  - `utils/`: Utility functions
-  - `vis/`: Visualization tools
-
-## Dependencies
-
-See requirements.txt for a full list of dependencies.
+@article{stevens_olsen_2004,
+title={Spatially balanced sampling of natural resources},
+author={Stevens Jr, Don L and Olsen, Anthony R},
+journal={Journal of the American statistical Association},
+volume={99},
+number={465},
+pages={262--278},
+year={2004},
+publisher={Taylor \& Francis}
+}

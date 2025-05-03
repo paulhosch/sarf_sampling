@@ -60,15 +60,15 @@ csv_files = sample_at_locations(
 # %% 3. Plot 
 # Plot all samples in one figure (or only one sample at a time)
 sample_paths = [
-    output_dir / 'samples' / 'simple_random_samples.geojson',
-    output_dir / 'samples' / 'proportional_random_samples.geojson',
-    output_dir / 'samples' / 'balanced_random_samples.geojson',
-    output_dir / 'samples' / 'simple_grts_samples.geojson',
-    output_dir / 'samples' / 'proportional_grts_samples.geojson',
-    output_dir / 'samples' / 'balanced_grts_samples.geojson',
-    output_dir / 'samples' / 'simple_systematic_samples.geojson',
-    output_dir / 'samples' / 'proportional_systematic_samples.geojson',
-    output_dir / 'samples' / 'balanced_systematic_samples.geojson',
+    output_dir / 'locations' / 'simple_random_samples.geojson',
+    output_dir / 'locations' / 'proportional_random_samples.geojson',
+    output_dir / 'locations' / 'balanced_random_samples.geojson',
+    output_dir / 'locations' / 'simple_grts_samples.geojson',
+    output_dir / 'locations' / 'proportional_grts_samples.geojson',
+    output_dir / 'locations' / 'balanced_grts_samples.geojson',
+    output_dir / 'locations' / 'simple_systematic_samples.geojson',
+    output_dir / 'locations' / 'proportional_systematic_samples.geojson',
+    output_dir / 'locations' / 'balanced_systematic_samples.geojson',
    
 ]
 
@@ -77,23 +77,24 @@ grid_paths = [
     None,  # No grid for simple random
     None, # No grid for proportional random
     None, # No grid for balanced random
-    output_dir / 'grids' / 'simple_grts_grid.geojson', 
-    output_dir / 'grids' / 'flooded_grts_grid.geojson', output_dir / 'grids' / 'non_flooded_grts_grid.geojson',
-    output_dir / 'grids' / 'flooded_grts_grid.geojson', output_dir / 'grids' / 'non_flooded_grts_grid.geojson', # Both stratified grids
+    output_dir /'locations' / 'grids' / 'simple_grts_grid.geojson', 
+    (output_dir /'locations' / 'grids' / 'flooded_grts_grid.geojson', output_dir / 'locations' / 'grids' / 'non_flooded_grts_grid.geojson'),
+    (output_dir / 'locations' / 'grids' / 'flooded_grts_grid.geojson', output_dir / 'locations' / 'grids' / 'non_flooded_grts_grid.geojson'), 
     None, # No grid for simple systematic
     None, # No grid for proportional systematic
-    None, # No grid for balanced systematic
+    None # No grid for balanced systematic
 ]
 
 # Figure with all samples compared in a grid
 fig = plot_multiple_samples(
     input_image_path=input_image_path,
     sample_paths=sample_paths,
+    stats_path=output_dir / 'locations' / 'stats.csv',
     custom_extent='square',#[-0.4, -0.3, 39.3, 39.4],
     #grid_paths=grid_paths, # optinional, comment out for no grid display 
     ncols=3,
     figsize=(15, 15),
-    output_path=output_dir / 'samples.png'
+    output_path=output_dir / 'sample_sets.svg'
 );
 
 

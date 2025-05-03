@@ -5,6 +5,7 @@ import matplotlib.patches as mpatches
 import rasterio
 import cartopy.crs as ccrs
 from pathlib import Path
+import pandas as pd
 from ..io.input_image import get_input_image
 from config import LABEL_BAND_NAME
 from sampling.vis.vis_params import (
@@ -18,8 +19,10 @@ from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 import matplotlib.lines as mlines
 from .utils import add_grid_lines, get_square_extent, get_data_extent
 import math
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+from matplotlib.patches import Rectangle
 
-def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, grid_paths=None, output_path=None, ncols=2, figsize=(12, 12)):
+def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custom_extent=None, grid_paths=None, output_path=None, ncols=2, figsize=(12, 12)):
     """
     Plot multiple samples in subplots with the same base layers.
     
@@ -29,6 +32,8 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
         Path to the input GeoTIFF image
     sample_paths : list
         List of paths to sample point GeoJSON files
+    stats_path : str, optional
+        Path to the CSV file containing statistics for the sample sets
     custom_extent : None, 'square', or list, optional
         Controls the map extent:
         - None: use original data extent
@@ -55,6 +60,14 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
     
     if grid_paths is not None and len(grid_paths) != len(sample_paths):
         raise ValueError("If grid_paths is provided, it must have the same length as sample_paths")
+    
+    # Read stats CSV if provided
+    stats_df = None
+    if stats_path:
+        try:
+            stats_df = pd.read_csv(stats_path)
+        except Exception as e:
+            print(f"Warning: Could not read stats file {stats_path}: {e}")
     
     # Read the input image
     image, metadata, label_band, osm_water_band = get_input_image(input_image_path)
@@ -90,6 +103,36 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
     data_crs = ccrs.PlateCarree()  # Our data is in EPSG:4326
     plot_crs = ccrs.PlateCarree()  # We'll use PlateCarree projection for the plot too
 
+    # Calculate extent dimensions in kilometers
+    lon_diff = abs(map_extent[1] - map_extent[0])  # width in degrees
+    lat_diff = abs(map_extent[3] - map_extent[2])  # height in degrees
+    
+    # Calculate midpoint latitude for more accurate conversion
+    mid_lat = (map_extent[2] + map_extent[3]) / 2
+    
+    # Convert degrees to kilometers
+    # 1 degree of latitude is approximately 111 km
+    # 1 degree of longitude varies with latitude
+    km_per_lon_degree = 111 * math.cos(math.radians(mid_lat))
+    km_per_lat_degree = 111
+    
+    # Calculate dimensions in km
+    width_km = lon_diff * km_per_lon_degree
+    height_km = lat_diff * km_per_lat_degree
+    
+    # Format the dimensions for display
+    if width_km < 1 or height_km < 1:
+        # Use meters if less than 1 km
+        width_m = width_km * 1000
+        height_m = height_km * 1000
+        extent_dimensions = f"{width_m:.0f}×{height_m:.0f} m"
+    elif width_km < 10 or height_km < 10:
+        # Use 1 decimal place for small values
+        extent_dimensions = f"{width_km:.1f}×{height_km:.1f} km"
+    else:
+        # Round to nearest km for larger values
+        extent_dimensions = f"{width_km:.0f}×{height_km:.0f} km"
+    
     # Calculate layout
     n_samples = len(sample_paths)
     nrows = math.ceil(n_samples / ncols)
@@ -111,24 +154,25 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
         wspace=0,    # width spacing between subplots
         hspace=0.2,    # height spacing between subplots
         top=1,      # top boundary (more space below title)
-        bottom=0.2,   # bottom boundary (space for legend)
+        bottom=0.1,   # bottom boundary (space for legend)
         left=0,     # left boundary
         right=1    # right boundary
     )
     
     # Prepare legend items - organize by categories for column layout
     sample_legend_items = [
-        mlines.Line2D([], [], color=SAMPLE_COLORS['0'], marker='+', linestyle='None', markersize=20, label='Non-Flooded Sample'),
-        mlines.Line2D([], [], color=SAMPLE_COLORS['1'], marker='+', linestyle='None', markersize=20, label='Flooded Sample')
+        mlines.Line2D([], [], color=SAMPLE_COLORS['1'], marker='+', markeredgewidth=3, linestyle='None', markersize=15, label='Flooded Sample (F)'),
+        mlines.Line2D([], [], color=SAMPLE_COLORS['0'], marker='+', markeredgewidth=3, linestyle='None', markersize=15, label='Non-Flooded Sample (NF)')
     ]
     
     stratum_legend_items = [
         mpatches.Patch(color=LABEL_CMAP(0), label='Non-Flooded Stratum'),
-        mpatches.Patch(color=LABEL_CMAP(1), label='Flooded Stratum')
+        mpatches.Patch(color=LABEL_CMAP(1), label='Flooded Stratum'),
+        mpatches.Patch(color=OSM_WATER_CMAP(1), label='OSM Water (excluded)')
     ]
     
     water_legend_items = [
-        mpatches.Patch(color=OSM_WATER_CMAP(1), label='OSM Water (masked)')
+       
     ]
     
     # Define colors and labels for different grid types
@@ -156,8 +200,8 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
         title = title.replace('_', ' ')
         title = title.replace('samples', '').replace('sample', '')
         title = title.strip()
-        
-        ax.set_title(title, fontsize=TITLE_SIZE)
+        title = ' '.join(word.upper() if word.lower() == 'grts' else word.capitalize() for word in title.split())
+        ax.set_title(title, fontsize=TITLE_SIZE, weight='bold', pad=10)
         
         # Plot base layers (these are raster arrays with bounds in EPSG:4326)
         ax.imshow(label_band, cmap=LABEL_CMAP, alpha=0.6,
@@ -168,25 +212,73 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
         
         # Read and plot sample points
         sample_counts = {0: 0, 1: 0}  # Count of samples by label
-        try:
-            samples = gpd.read_file(sample_path)
-            
-            # Count samples in each category
-            for strata in ['0', '1']:
-                try:
-                    strata_samples = samples[samples[LABEL_BAND_NAME] == int(strata)]
-                    sample_counts[int(strata)] = len(strata_samples)
-                    if not strata_samples.empty:
-                        # Use GeoPandas plot with the correct transform
-                        strata_samples.plot(
-                            ax=ax, color=SAMPLE_COLORS[strata], markersize=100, 
-                            transform=data_crs,
-                            marker='+',
-                        )
-                except Exception as e:
-                    print(f"Warning: Could not plot stratum {strata} for sample {title}: {e}")
-        except Exception as e:
-            print(f"Warning: Could not read sample file {sample_path}: {e}")
+        min_spacing = None
+        
+        # Get filename for matching with stats CSV
+        sample_filename = Path(sample_path).name
+        
+        # Try to get sample counts and min_spacing from stats CSV
+        if stats_df is not None:
+            try:
+                # Find the matching row in the stats dataframe
+                matching_row = stats_df[stats_df['file_path'] == sample_filename]
+                if not matching_row.empty:
+                    # Get flooded and non-flooded counts
+                    sample_counts[1] = matching_row['flooded'].values[0]
+                    sample_counts[0] = matching_row['non_flooded'].values[0]
+                    # Get min_spacing
+                    min_spacing = matching_row['min_spacing'].values[0]
+                    # No need to count samples from file
+                    samples_counted = True
+                else:
+                    samples_counted = False
+            except Exception as e:
+                print(f"Warning: Error reading stats for {sample_filename}: {e}")
+                samples_counted = False
+        else:
+            samples_counted = False
+        
+        # If we couldn't get stats from CSV, count samples from file
+        if not samples_counted:
+            try:
+                samples = gpd.read_file(sample_path)
+                
+                # Count samples in each category
+                for strata in ['0', '1']:
+                    try:
+                        strata_samples = samples[samples[LABEL_BAND_NAME] == int(strata)]
+                        sample_counts[int(strata)] = len(strata_samples)
+                        if not strata_samples.empty:
+                            # Use GeoPandas plot with the correct transform
+                            strata_samples.plot(
+                                ax=ax, color=SAMPLE_COLORS[strata], markersize=100, 
+                                transform=data_crs,
+                                marker='+',
+                            )
+                    except Exception as e:
+                        print(f"Warning: Could not plot stratum {strata} for sample {title}: {e}")
+            except Exception as e:
+                print(f"Warning: Could not read sample file {sample_path}: {e}")
+        else:
+            # Still need to plot the samples even if we got counts from CSV
+            try:
+                samples = gpd.read_file(sample_path)
+                
+                # Plot samples in each category
+                for strata in ['0', '1']:
+                    try:
+                        strata_samples = samples[samples[LABEL_BAND_NAME] == int(strata)]
+                        if not strata_samples.empty:
+                            # Use GeoPandas plot with the correct transform
+                            strata_samples.plot(
+                                ax=ax, color=SAMPLE_COLORS[strata], markersize=100, 
+                                transform=data_crs,
+                                marker='+',
+                            )
+                    except Exception as e:
+                        print(f"Warning: Could not plot stratum {strata} for sample {title}: {e}")
+            except Exception as e:
+                print(f"Warning: Could not read sample file {sample_path}: {e}")
         
         # Plot grid(s) if provided
         if grid_paths is not None and i < len(grid_paths) and grid_paths[i] is not None:
@@ -283,21 +375,43 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
         total_samples = sample_counts[0] + sample_counts[1]
         
         if total_samples > 0:
-            # Create simple text-only legend entries
-            nf_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='None', 
-                                     label=f'NF: {sample_counts[0]}')
+            # Create legend items list
+            legend_items = []
             
+            # Create simple text-only legend entries
             f_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='None', 
-                                    label=f'F: {sample_counts[1]}')
+                                    label=f'nF: {sample_counts[1]}')
+            legend_items.append(f_legend)
+            
+            nf_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='None', 
+                                     label=f'nNF: {sample_counts[0]}')
+            legend_items.append(nf_legend)
+            
+            # Add min_spacing if available
+            if min_spacing is not None:
+                # Format min_spacing in meters with appropriate precision
+                if min_spacing < 1000:  # Less than 1km
+                    dmin_formatted = f"{min_spacing:.0f} m"
+                elif min_spacing < 10000:  # Less than 10km
+                    dmin_formatted = f"{(min_spacing/1000):.1f} km"
+                else:  # 10km or more
+                    dmin_formatted = f"{(min_spacing/1000):.0f} km"
+                
+                dmin_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='None',
+                                           label=f"dMIN: {dmin_formatted}")
+                legend_items.append(dmin_legend)
             
             # Create a simple text-only legend at the bottom left
             subplot_legend = ax.legend(
-                handles=[f_legend, nf_legend],
+                handles=legend_items,
                 loc='lower left',
+                bbox_to_anchor=(0, 0),
                 fontsize=SUBPLOT_LEGEND_TEXT_SIZE,
                 frameon=False,  # No frame
                 ncol=1,
-                borderpad=0.2,
+                borderpad=0.05,
+                handletextpad=0.05,
+                handlelength=0.1
             )
             
             # Add the legend to the subplot
@@ -314,6 +428,14 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
         grid_legend_items          # Column 4: Grid types
     ]
     
+    # Create extent dimensions legend item
+    extent_legend = mlines.Line2D([], [], color='none', marker=None, linestyle='none',
+                               label=f"Plot Size: {extent_dimensions}", markersize=0)
+    
+    # Add extent dimensions to legend elements
+    extent_legend_items = [extent_legend]
+    legend_columns.append(extent_legend_items)
+    
     # Flatten legend elements for use in legend
     legend_elements = []
     for column in legend_columns:
@@ -321,13 +443,12 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
     
     # Add a single legend at the bottom of the figure with column organization
     legend = fig.legend(handles=legend_elements, 
-                  loc='lower center', 
-                  bbox_to_anchor=(0.5, 0.02), 
-                  ncol=4,
+                  loc='upper center', 
+                  bbox_to_anchor=(0.5, -0.2), 
+                  ncol=3, 
                   fontsize=LEGEND_TEXT_SIZE,
                   columnspacing=1.0,
                   frameon=True, 
-                  fancybox=True, 
                   framealpha=1.0,
                   edgecolor='black',
                   facecolor='white',
@@ -340,6 +461,6 @@ def plot_multiple_samples(input_image_path, sample_paths, custom_extent=None, gr
     
     if output_path:
         # Save figure
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.savefig(output_path, dpi=600, bbox_inches='tight', transparent=True)
     
     return fig 
