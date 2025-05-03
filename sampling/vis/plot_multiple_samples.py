@@ -121,17 +121,19 @@ def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custo
     height_km = lat_diff * km_per_lat_degree
     
     # Format the dimensions for display
+    # For PlateCarree projection, report that these are degree dimensions converted to approx. ground distances
     if width_km < 1 or height_km < 1:
         # Use meters if less than 1 km
         width_m = width_km * 1000
         height_m = height_km * 1000
-        extent_dimensions = f"{width_m:.0f}×{height_m:.0f} m"
+        # Report both degree dimensions and their ground distance equivalent
+        extent_dimensions = f"{lon_diff:.4f}°×{lat_diff:.4f}° ({width_m:.0f}×{height_m:.0f} m)"
     elif width_km < 10 or height_km < 10:
         # Use 1 decimal place for small values
-        extent_dimensions = f"{width_km:.1f}×{height_km:.1f} km"
+        extent_dimensions = f"{lon_diff:.4f}°×{lat_diff:.4f}° ({width_km:.1f}×{height_km:.1f} km)"
     else:
         # Round to nearest km for larger values
-        extent_dimensions = f"{width_km:.0f}×{height_km:.0f} km"
+        extent_dimensions = f"{lon_diff:.4f}°×{lat_diff:.4f}° ({width_km:.0f}×{height_km:.0f} km)"
     
     # Calculate layout
     n_samples = len(sample_paths)
