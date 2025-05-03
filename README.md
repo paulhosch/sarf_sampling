@@ -1,4 +1,4 @@
-# saRFlood-2 Sampling
+# saRFlood – Sampling
 
 This repository contains functionalities for the 2. part of the saRFlood pipeline - Sampling from the input_image.
 Following Sampling Strategies can be used:
