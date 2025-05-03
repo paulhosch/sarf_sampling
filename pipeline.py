@@ -94,7 +94,7 @@ fig = plot_multiple_samples(
     #grid_paths=grid_paths, # optinional, comment out for no grid display 
     ncols=3,
     figsize=(15, 15),
-    output_path=output_dir / 'sample_sets.svg'
+    output_path=output_dir / 'sample_sets.png'
 );
 
 

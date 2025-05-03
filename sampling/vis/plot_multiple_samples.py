@@ -359,7 +359,7 @@ def plot_multiple_samples(input_image_path, sample_paths, stats_path=None, custo
             
             # Increase font size and rotate labels
             gl.xlabel_style = {'size': AXIS_LABEL_SIZE}
-            gl.ylabel_style = {'size': AXIS_LABEL_SIZE, 'rotation': 90}
+            gl.ylabel_style = {'size': AXIS_LABEL_SIZE, 'rotation': 270}
         else:
             # No gridlines for all subplots
             ax.gridlines(draw_labels=False, linewidth=0, linestyle='', alpha=0)
