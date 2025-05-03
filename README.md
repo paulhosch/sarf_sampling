@@ -12,7 +12,7 @@ To compare different class and spatial distributions in the sample selection, th
 
 ## Sample Sets 
 ![Sample Sets](sample_sets_filled.png)
-Data Source: (c) OpenStreetMap contributors and (c) European Union, Copernicus Emergency
+Data Sources: (c) OpenStreetMap contributors and (c) European Union, CEMS Rapid Mapping
 
 ## Usage
 pipeline.py outlines the complete sampling and visualization process. 
