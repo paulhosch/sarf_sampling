@@ -1,6 +1,6 @@
 # saRFlood – Sampling
 
-This repository contains functionalities for the 2. part of the saRFlood pipeline - Sampling from the input_image.
+This repository contains workflow for the 2. part of the saRFlood pipeline - Sampling from the casestudy input_image.
 Following Sampling Strategies can be used:
 
 - Simple Random Sampling
