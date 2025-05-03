@@ -9,7 +9,8 @@ Following Sampling Strategies can be used:
 - Systematic Square Grid Sampling
 
 To compare different the different class and spatial distributions, the following sample sets can be created and plotted:
-![Uploading sample_sets.png…]()
+![Sample Sets](sample_sets.png)
+
 
 Data Source: (c) OpenStreetMap contributors and (c) European Union, Copernicus Emergency
 
