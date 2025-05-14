@@ -16,6 +16,8 @@ def get_sample_locations(
     grid_dir=None,
     max_iterations=5,
     decrement_factor=0.5,
+    training_samples_dirs=None,
+    check_duplicates=False,
     **kwargs
 ):
     """
@@ -47,6 +49,10 @@ def get_sample_locations(
         Maximum iterations for iterative methods
     decrement_factor : float, default=0.7
         Factor for decreasing spacing in iterative methods
+    training_samples_dirs : str, Path, list of str, or list of Path, optional
+        Directory or list of directories containing existing training samples to check for duplicates
+    check_duplicates : bool, default=False
+        Whether to check for and remove duplicate points that exist in training samples
     **kwargs : dict
         Additional keyword arguments passed to the specific sampling method
     
@@ -121,6 +127,8 @@ def get_sample_locations(
                 grid_dir=grid_dir,
                 max_iterations=max_iterations,
                 decrement_factor=decrement_factor,
+                training_samples_dirs=training_samples_dirs,
+                check_duplicates=check_duplicates,
                 **kwargs
             )
         elif points_path is not None:

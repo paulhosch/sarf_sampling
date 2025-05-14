@@ -17,7 +17,7 @@ def simple_grts_sample(points_path, n_samples, output_dir, grid_dir, decrement_f
     sampled_gdf, grid_length = get_iterative_grts_sample(points_gdf, n_samples, grid_dir / 'simple_grts_grid.geojson', decrement_factor = decrement_factor, max_iterations = max_iterations)
     
     # Save the sample
-    output_filename = 'simple_grts_samples.geojson'
+    output_filename = 'simple_grts.geojson'
     save_points_df(sampled_gdf, output_dir / output_filename, overwrite=True)
     
     # Update stats.csv
@@ -149,7 +149,7 @@ def grts_sampling(points_path, n_samples, strata_distribution, output_dir, grid_
     print(f"Number of samples per stratum: {combined_sample[LABEL_BAND_NAME].value_counts()}")
 
     # Save the combined sample with overwrite=True
-    output_filename = f"{strata_distribution}_grts_samples.geojson"
+    output_filename = f"{strata_distribution}_grts.geojson"
     save_points_df(combined_sample, output_dir / output_filename, overwrite=True)
     print(f"Saved samples to {output_dir / output_filename}")
     

@@ -189,7 +189,7 @@ def sample_at_locations(
                     print("Warning: Label band not found in selected bands. Verification skipped.")
             
             # Save as CSV
-            output_filename = f"{geojson_file.stem}_samples.csv"
+            output_filename = f"{geojson_file.stem}.csv"
             output_path = output_dir / output_filename
             df.to_csv(output_path, index=False)
             print(f"Saved {len(df)} samples to {output_path}")
