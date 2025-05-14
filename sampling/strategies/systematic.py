@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 from pathlib import Path
 from shapely.geometry import Point
@@ -10,7 +11,8 @@ from sampling.io.points import save_points_df
 from sampling.utils.stats import update_sampling_stats
 
 # Function to create systematic grid using meshgrid for a stratum
-def sample_stratum_systematically(mask, n_samples_desired, max_iterations=5, decrement_factor=0.7):
+def sample_stratum_systematically(mask, n_samples_desired, max_iterations=5, decrement_factor=0.7, 
+                                 training_samples_dirs=None, check_duplicates=False, transform=None, crs=None):
     if np.sum(mask) == 0:
         print(f"Warning: No pixels found for stratum")
         return np.array([]), np.array([]), None
@@ -41,6 +43,14 @@ def sample_stratum_systematically(mask, n_samples_desired, max_iterations=5, dec
     best_count = 0
     best_spacing = None
     
+    # Load existing training samples if requested
+    existing_points = None
+    if check_duplicates and training_samples_dirs is not None:
+        print(f"Checking for duplicates in training samples directories")
+        existing_points = load_existing_training_samples(training_samples_dirs)
+        if existing_points is not None:
+            print(f"Loaded {len(existing_points)} existing training points to check for duplicates")
+    
     for iteration in range(max_iterations):
         print(f"Attempt {iteration+1}/{max_iterations} - Grid spacing: {spacing}")
         
@@ -61,6 +71,15 @@ def sample_stratum_systematically(mask, n_samples_desired, max_iterations=5, dec
             if 0 <= r < mask.shape[0] and 0 <= c < mask.shape[1]:
                 if mask[r, c]:
                     valid_grid_points.append((r, c))
+        
+        print(f"Found {len(valid_grid_points)} potential grid points")
+        
+        # Filter duplicate points if requested
+        if check_duplicates and existing_points is not None and valid_grid_points:
+            filtered_grid_points = remove_duplicate_points(valid_grid_points, existing_points, 
+                                                          mask.shape, transform, crs)
+            print(f"Removed {len(valid_grid_points) - len(filtered_grid_points)} duplicate points")
+            valid_grid_points = filtered_grid_points
         
         # Convert to arrays
         if valid_grid_points:
@@ -124,7 +143,148 @@ def sample_stratum_systematically(mask, n_samples_desired, max_iterations=5, dec
     # Otherwise return all we found
     return best_sampled_rows, best_sampled_cols, best_spacing
 
-def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir, grid_dir=None, max_iterations=5, decrement_factor=0.7):
+def load_existing_training_samples(training_dirs):
+    """
+    Load existing training samples from geojson files in multiple training directories
+    
+    Parameters
+    ----------
+    training_dirs : str, Path, list of str, or list of Path
+        Directory or list of directories containing training sample geojson files
+        
+    Returns
+    -------
+    gpd.GeoDataFrame or None
+        Combined GeoDataFrame of all training samples, or None if no files found
+    """
+    # Ensure training_dirs is a list
+    if not isinstance(training_dirs, list):
+        training_dirs = [training_dirs]
+    
+    all_gdfs = []
+    total_files = 0
+    
+    # Process each directory
+    for training_dir in training_dirs:
+        training_dir = Path(training_dir)
+        if not training_dir.exists():
+            print(f"Warning: Training directory {training_dir} does not exist")
+            continue
+        
+        # Find all geojson files in this directory
+        geojson_files = list(training_dir.glob("*.geojson"))
+        if not geojson_files:
+            print(f"No geojson files found in {training_dir}")
+            continue
+        
+        print(f"Found {len(geojson_files)} geojson files in {training_dir}")
+        total_files += len(geojson_files)
+        
+        # Load all files from this directory
+        for file in geojson_files:
+            try:
+                gdf = gpd.read_file(file)
+                all_gdfs.append(gdf)
+                print(f"  Loaded {len(gdf)} points from {file.name}")
+            except Exception as e:
+                print(f"  Error loading {file}: {e}")
+    
+    # If no valid files were found, return None
+    if not all_gdfs:
+        print(f"No valid GeoJSON files found in any of the provided directories")
+        return None
+    
+    # Combine all GeoDataFrames
+    print(f"Combining {len(all_gdfs)} GeoDataFrames from {total_files} files")
+    combined_gdf = gpd.GeoDataFrame(pd.concat(all_gdfs, ignore_index=True))
+    return combined_gdf
+
+def remove_duplicate_points(valid_grid_points, existing_points, raster_shape, transform=None, crs=None):
+    """
+    Remove points from valid_grid_points that are already present in existing_points
+    
+    Parameters
+    ----------
+    valid_grid_points : list of tuples
+        List of (row, col) tuples representing candidate grid points
+    existing_points : gpd.GeoDataFrame
+        GeoDataFrame containing existing training points
+    raster_shape : tuple
+        Shape of the raster (rows, cols)
+    transform : affine.Affine, optional
+        Affine transform of the raster, used to convert pixel to geographic coordinates
+    crs : str or CRS, optional
+        Coordinate reference system of the raster
+    
+    Returns
+    -------
+    list
+        Filtered list of (row, col) tuples
+    """
+    if len(valid_grid_points) == 0 or existing_points is None or len(existing_points) == 0:
+        return valid_grid_points
+    
+    # If we don't have transform and CRS, we can't do proper spatial comparison
+    if transform is None or crs is None:
+        print("Warning: Transform or CRS is missing - cannot check for spatial duplicates")
+        return valid_grid_points
+    
+    # Convert pixel coordinates to geographical coordinates
+    rows, cols = zip(*valid_grid_points)
+    xs, ys = rasterio.transform.xy(transform, rows, cols, offset='center')
+    
+    # Create GeoDataFrame for candidate points
+    geometries = [Point(x, y) for x, y in zip(xs, ys)]
+    candidates_gdf = gpd.GeoDataFrame(
+        {'row': rows, 'col': cols},
+        geometry=geometries,
+        crs=crs
+    )
+    
+    # Make sure both GeoDataFrames are in the same CRS
+    if existing_points.crs != candidates_gdf.crs:
+        existing_points = existing_points.to_crs(candidates_gdf.crs)
+    
+    # Use spatial index for efficient duplicate detection
+    # We need to ensure we're working in a metric CRS for buffering
+    # EPSG:4326 (WGS84) uses degrees, which makes buffer distances inconsistent
+    metric_crs = PROJECTION_METERS  # From config.py, typically EPSG:3857
+    
+    # Convert both GeoDataFrames to a metric CRS for buffering
+    candidates_metric = candidates_gdf.to_crs(metric_crs)
+    existing_metric = existing_points.to_crs(metric_crs)
+    
+    # Now we can use a consistent buffer distance in meters
+    buffer_distance = 1.0  # 1 meter buffer
+    
+    # Create a small buffer around existing points
+    existing_buffered = existing_metric.copy()
+    existing_buffered.geometry = existing_metric.geometry.buffer(buffer_distance)
+    
+    # Identify points that intersect with any buffered existing point
+    spatial_index = existing_buffered.sindex
+    
+    # Get indices of candidate points that are near existing points
+    duplicate_indices = set()
+    for idx, candidate_geom in enumerate(candidates_metric.geometry):
+        possible_matches_idx = list(spatial_index.intersection(candidate_geom.bounds))
+        if possible_matches_idx:
+            possible_matches = existing_buffered.iloc[possible_matches_idx]
+            # More precise check using actual geometries
+            if any(candidate_geom.intersects(match_geom) for match_geom in possible_matches.geometry):
+                duplicate_indices.add(idx)
+    
+    # Remove duplicates
+    non_duplicate_indices = [i for i in range(len(valid_grid_points)) if i not in duplicate_indices]
+    filtered_points = [valid_grid_points[i] for i in non_duplicate_indices]
+    
+    print(f"Identified {len(duplicate_indices)} points that are duplicates of existing training points")
+    
+    return filtered_points
+
+def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir, grid_dir=None, 
+                        max_iterations=5, decrement_factor=0.7, training_samples_dirs=None, 
+                        check_duplicates=False):
     """
     Perform systematic sampling directly from a raster file using numpy meshgrid.
     
@@ -147,6 +307,10 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
         Maximum number of iterations for adjusting grid spacing
     decrement_factor : float, default=0.7
         Factor by which to decrease grid spacing when too few points are found
+    training_samples_dirs : str, Path, or list, optional
+        Path to directory or list of directories containing existing training samples to check for duplicates
+    check_duplicates : bool, default=False
+        Whether to check for and remove duplicate points already in training samples
         
     Returns
     -------
@@ -163,6 +327,15 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
+    # Print info about duplicate checking
+    if check_duplicates and training_samples_dirs:
+        if isinstance(training_samples_dirs, list):
+            print(f"Will check for duplicates in {len(training_samples_dirs)} training sample directories")
+        else:
+            print(f"Will check for duplicates in training samples directory: {training_samples_dirs}")
+    else:
+        print("Duplicate checking is disabled")
+    
     # Check if raster file exists
     if not raster_path.exists():
         raise FileNotFoundError(f"Input raster file not found: {raster_path}")
@@ -170,6 +343,10 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
     # Read raster
     print(f"Loading raster from {raster_path}")
     image, metadata, label_band, osm_water_band = get_input_image(raster_path)
+    
+    # Get raster transform and CRS for spatial operations
+    transform = metadata['transform']
+    crs = metadata['crs']
     
     # Extract valid pixels (not NaN and not water)
     valid_mask = ~np.isnan(label_band) & (osm_water_band == 0)
@@ -187,7 +364,14 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
         print(f"Total valid pixels: {total_valid_pixels}")
         
         # Sample directly from all valid pixels
-        rows, cols, spacing = sample_stratum_systematically(valid_mask, n_samples, max_iterations=max_iterations, decrement_factor=decrement_factor)
+        rows, cols, spacing = sample_stratum_systematically(
+            valid_mask, n_samples, max_iterations=max_iterations, 
+            decrement_factor=decrement_factor,
+            training_samples_dirs=training_samples_dirs, 
+            check_duplicates=check_duplicates,
+            transform=transform,
+            crs=crs
+        )
         
         # Get labels for the sampled pixels
         sampled_labels = label_band[rows, cols]
@@ -215,7 +399,7 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
         print(f"Number of samples per stratum: {combined_sample[LABEL_BAND_NAME].value_counts().to_dict()}")
         
         # Save the combined sample
-        output_filename = f"{strata_distribution}_systematic_samples.geojson"
+        output_filename = f"{strata_distribution}_systematic.geojson"
         output_path = output_dir / output_filename
         save_points_df(combined_sample, output_path, overwrite=True)
         print(f"Saved combined samples to {output_path}")
@@ -259,21 +443,52 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
         print(f"Number of balanced flooded samples: {n_samples_1}")
     
     # Sample each stratum
-    rows_0, cols_0, spacing_0 = sample_stratum_systematically(stratum_0_mask, n_samples_0, max_iterations=max_iterations, decrement_factor=decrement_factor)
-    rows_1, cols_1, spacing_1 = sample_stratum_systematically(stratum_1_mask, n_samples_1, max_iterations=max_iterations, decrement_factor=decrement_factor)
+    rows_0, cols_0, spacing_0 = sample_stratum_systematically(
+        stratum_0_mask, n_samples_0, max_iterations=max_iterations, 
+        decrement_factor=decrement_factor,
+        training_samples_dirs=training_samples_dirs, 
+        check_duplicates=check_duplicates,
+        transform=transform,
+        crs=crs
+    )
     
+    rows_1, cols_1, spacing_1 = sample_stratum_systematically(
+        stratum_1_mask, n_samples_1, max_iterations=max_iterations, 
+        decrement_factor=decrement_factor,
+        training_samples_dirs=training_samples_dirs, 
+        check_duplicates=check_duplicates,
+        transform=transform,
+        crs=crs
+    )
+    
+
+    # TODO: remove this logic and just return an error if one stratum has too few samples
     # If one stratum has too few samples, try to add more from the other stratum
     if len(rows_0) < n_samples_0 and len(rows_1) > 0:
         deficit = n_samples_0 - len(rows_0)
         print(f"Deficit of {deficit} samples in stratum 0, trying to compensate from stratum 1")
         n_samples_1 += deficit
-        rows_1, cols_1, spacing_1 = sample_stratum_systematically(stratum_1_mask, n_samples_1, max_iterations=max_iterations, decrement_factor=decrement_factor)
+        rows_1, cols_1, spacing_1 = sample_stratum_systematically(
+            stratum_1_mask, n_samples_1, max_iterations=max_iterations, 
+            decrement_factor=decrement_factor,
+            training_samples_dirs=training_samples_dirs, 
+            check_duplicates=check_duplicates,
+            transform=transform,
+            crs=crs
+        )
     
     if len(rows_1) < n_samples_1 and len(rows_0) > 0:
         deficit = n_samples_1 - len(rows_1)
         print(f"Deficit of {deficit} samples in stratum 1, trying to compensate from stratum 0")
         n_samples_0 += deficit
-        rows_0, cols_0, spacing_0 = sample_stratum_systematically(stratum_0_mask, n_samples_0, max_iterations=max_iterations, decrement_factor=decrement_factor)
+        rows_0, cols_0, spacing_0 = sample_stratum_systematically(
+            stratum_0_mask, n_samples_0, max_iterations=max_iterations, 
+            decrement_factor=decrement_factor,
+            training_samples_dirs=training_samples_dirs, 
+            check_duplicates=check_duplicates,
+            transform=transform,
+            crs=crs
+        )
     
     # Combine results
     all_rows = np.concatenate([rows_0, rows_1]) if len(rows_0) > 0 and len(rows_1) > 0 else (rows_0 if len(rows_0) > 0 else rows_1)
@@ -307,7 +522,7 @@ def systematic_sampling(raster_path, n_samples, strata_distribution, output_dir,
     print(f"Number of samples per stratum: {combined_sample[LABEL_BAND_NAME].value_counts().to_dict()}")
     
     # Save the combined sample
-    output_filename = f"{strata_distribution}_systematic_samples.geojson"
+    output_filename = f"{strata_distribution}_systematic.geojson"
     output_path = output_dir / output_filename
     save_points_df(combined_sample, output_path, overwrite=True)
     print(f"Saved combined samples to {output_path}")

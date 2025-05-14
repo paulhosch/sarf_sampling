@@ -110,7 +110,7 @@ def random_sampling(
     
     # Save if output_dir is provided
     if output_dir is not None:
-        output_filename = f"{strata_distribution}_random_samples.geojson"
+        output_filename = f"{strata_distribution}_random.geojson"
         save_points_df(sampled_gdf, output_dir / output_filename, overwrite=True)
         print(f"Saved samples to {output_dir / output_filename}")
         update_sampling_stats(
