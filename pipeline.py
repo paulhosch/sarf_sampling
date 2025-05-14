@@ -18,7 +18,7 @@ input_image_path = Path(base_dir) / 'case_studies' / site_id / 'input_image'/ 'i
 
 output_dir = Path(base_dir) / 'case_studies' / site_id / 'sample_sets'/ 'training'/ str(n_samples)
 os.makedirs(output_dir, exist_ok=True)
-points_path =  Path(base_dir) / 'case_studies' / site_id / 'sample_sets' / 'sampling_points.geojson'
+points_path = Path(base_dir) / 'case_studies' / site_id / 'samples' / 'sampling_points.geojson'
 
 # %% 1. Convert Image raster to points 
 # Vectorizing the whole raster is a workaround to make use of the pygrts pacakge and is not very efficient and unneccesary
