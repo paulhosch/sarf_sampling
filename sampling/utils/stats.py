@@ -15,7 +15,8 @@ def update_sampling_stats(
     calculate_spacing=True,
     simple_grid_length=None,
     flooded_grid_length=None,
-    non_flooded_grid_length=None
+    non_flooded_grid_length=None,
+    sampling_time_seconds=None
 ):
     """
     Updates a stats.csv file in the output directory with sampling statistics.
@@ -43,6 +44,8 @@ def update_sampling_stats(
         Grid length used for flooded stratum (optional)
     non_flooded_grid_length : float
         Grid length used for non-flooded stratum (optional)
+    sampling_time_seconds : float, optional
+        Time taken for sampling in seconds
     """
     # Ensure output_dir is a Path object
     output_dir = Path(output_dir)
@@ -93,6 +96,7 @@ def update_sampling_stats(
         'simple_grid_length': simple_grid_length,
         'flooded_grid_length': flooded_grid_length,
         'non_flooded_grid_length': non_flooded_grid_length,
+        'sampling_time_seconds': sampling_time_seconds,
         'file_path': output_filename
     }
     

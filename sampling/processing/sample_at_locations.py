@@ -18,7 +18,8 @@ def sample_at_locations(
     sample_locations_path=None,
     locations_dir=None, 
     output_dir=None,
-    band_selection=None
+    band_selection=None,
+    sampling_time_seconds=None
 ):
     """
     Sample raster band values at point locations and create CSV files for ML training.
@@ -37,6 +38,8 @@ def sample_at_locations(
         Directory to save output CSV files (created if it doesn't exist)
     band_selection : list, optional
         List of band names to sample. If None, all bands are sampled.
+    sampling_time_seconds : float, optional
+        Time taken for the sampling process in seconds
 
     
     Returns
