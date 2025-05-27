@@ -9,20 +9,9 @@ from pathlib import Path
 from typing import List, Dict, Union, Optional, Tuple
 
 # Import visualization parameters
-from sampling.vis.vis_params import (
-    TITLE_SIZE, 
-    AXIS_LABEL_SIZE, 
-    TICK_LABEL_SIZE, 
-    LEGEND_TITLE_SIZE, 
-    LEGEND_TEXT_SIZE, 
-    SUBPLOT_LEGEND_TEXT_SIZE
-)
+from sampling.vis.vis_params import *
+from sampling.vis.utils import get_height_ratios_with_legend
 
-# Add SUBPLOT_TITLE_SIZE if not present
-try:
-    from sampling.vis.vis_params import SUBPLOT_TITLE_SIZE
-except ImportError:
-    SUBPLOT_TITLE_SIZE = 16
 
 # Define visualization parameters for features
 # This is a copy of VIS_PARAMS from vis_params.py to avoid import issues
@@ -142,13 +131,20 @@ def plot_sample_histograms(
     features_to_plot: List[str] = None,
     categorical_features: Dict[str, Dict[int, str]] = None,
     binary_features: List[str] = None,
-    title: str = "Histogram of Sampled Values",
+    title: str = None,
+    legend_title: str = None,
+    use_value_label: bool = False,
     output_path: Optional[str] = None,
     figsize: Tuple[int, int] = (15, 10),
-    dpi: int = 300,
+    auto_size: bool = True,
+    legend_height: float = 1.0,
+    dpi: int = DPI,
     n_bins: int = 30,
+    n_cols: int = 3,
     subplot_adjust: Dict[str, float] = None,
     normalize: str = "count",  # Options: "count" or "density"
+    custom_colors: Optional[List[str]] = None,  # List of hex colors (e.g., ['#FF0000', '#00FF00', '#0000FF']) for manual color control.
+    legend_rows: int = 2,
 ):
     """
     Plot histograms of sampled values, comparing one variable at a time using seaborn.
@@ -187,6 +183,10 @@ def plot_sample_histograms(
         Dictionary with subplot adjustment parameters
     normalize : str, optional
         How to normalize the histograms: "count" (default) or "density"
+    custom_colors : list, optional
+        List of hex colors (e.g., ['#FF0000', '#00FF00', '#0000FF']) for manual color control.
+        Must provide at least as many colors as there are groups being compared.
+        If not provided, uses seaborn's default 'colorblind' palette.
     """
     assert compare in ["site", "strategy", "sample_size", "iterations"], "compare must be one of 'site', 'strategy', 'sample_size', or 'iterations'"
     assert normalize in ["count", "density"], "normalize must be one of 'count' or 'density'"
@@ -343,39 +343,65 @@ def plot_sample_histograms(
         df = df[df["iteration"] == select_iteration]
 
     # Set up seaborn color palette
-    base_palette = sns.color_palette("colorblind")
+    if custom_colors is not None:
+        base_palette = custom_colors
+    else:
+        base_palette = sns.color_palette("colorblind")
 
-    # Set up subplots
+    # Validate custom colors if provided
+    if custom_colors is not None:
+        # Get the number of unique groups that will be compared
+        compare_col = {
+            "site": "site_id",
+            "strategy": "strategy", 
+            "sample_size": "n_samples",
+            "iterations": "iteration"
+        }[compare]
+        
+        unique_groups = df[compare_col].unique()
+        n_groups = len(unique_groups)
+        
+        if len(custom_colors) < n_groups:
+            raise ValueError(f"Not enough custom colors provided. Need {n_groups} colors for {n_groups} {compare} groups, but only {len(custom_colors)} colors were provided.")
+        
+        print(f"Using custom colors for {n_groups} {compare} groups: {unique_groups}")
+
+    # Set up subplots using gridspec
     n_features = len(features_to_plot)
-    n_cols = min(3, n_features)
-    n_rows = (n_features + n_cols - 1) // n_cols
-    row_height = 4
-    legend_height = 1
-    title_height = 0.7
-    fig_height = n_rows * row_height + legend_height + title_height
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(figsize[0], fig_height))
-    if n_features == 1:
-        axes = np.array([axes])
-    axes = axes.flatten()
 
-    # What to compare
-    compare_col = {
-        "site": "site_id",
-        "strategy": "strategy",
-        "sample_size": "n_samples",
-        "iterations": "iteration"
-    }[compare]
+    n_cols_features = int(np.ceil(np.sqrt(n_features)))
+    n_rows_features = int(np.ceil(n_features / n_cols_features))
+
+    width_ratios = [1] * n_cols_features
+    height_ratios = [1] * n_rows_features 
+    
+    fig = plt.figure(figsize=figsize)
+    n_rows_with_legend, height_ratios_with_legend = get_height_ratios_with_legend(figsize[1], height_ratios = [1] * n_rows_features )
+
+    gs = fig.add_gridspec(n_rows_with_legend, n_cols_features, height_ratios=height_ratios_with_legend, width_ratios=width_ratios)
+    # Set line thickness and color for all subplots
+    plt.rcParams['axes.linewidth'] = LINE_THICKNESS  # Outline (spine) thickness
+    plt.rcParams['xtick.major.width'] = LINE_THICKNESS
+    plt.rcParams['ytick.major.width'] = LINE_THICKNESS
+    plt.rcParams['axes.edgecolor'] = LINE_COLOR  # Set spine color
 
     handles_labels = []
     legend_labels = None
     legend_colors = None
-    alpha_bar = 0.6  # Same as for histograms
+    alpha_bar = 1  # Same as for histograms
     
     # Set y-axis label based on normalization
-    y_label = "Density" if normalize == "density" else "Frequency"
+    y_label = "Density" if normalize == "density" else f"Frequency"
     
     for i, feature in enumerate(features_to_plot):
-        ax = axes[i]
+        # Calculate row and column for gridspec
+        row = i // n_cols
+        col = i % n_cols
+        ax = fig.add_subplot(gs[row, col])
+        
+        # Determine if this is the first subplot in its row
+        is_first_in_row = (i % n_cols) == 0
+        
         # Get unique groups for this feature
         if feature in categorical_features or feature in binary_features:
             plot_df = df[[feature, compare_col]].copy()
@@ -432,8 +458,16 @@ def plot_sample_histograms(
                     alpha=alpha_bar
                 )
             
-            ax.set_ylabel(y_label, fontsize=AXIS_LABEL_SIZE)
-            ax.set_xlabel("")
+            # Only show y-axis label on first subplot of each row
+            if is_first_in_row:
+                ax.set_ylabel(y_label, fontsize=AXIS_LABEL_SIZE)
+            else:
+                ax.set_ylabel("")
+            
+            if use_value_label:
+                ax.set_xlabel(value_label, fontsize=AXIS_LABEL_SIZE)
+            else:
+                ax.set_xlabel("")
             # Rotate x-axis labels for categorical features
             ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
             
@@ -478,8 +512,12 @@ def plot_sample_histograms(
                     alpha=alpha_bar
                 )
             
+            # Keep x-axis label for binary features (as requested)
             ax.set_xlabel(y_label, fontsize=AXIS_LABEL_SIZE)
-            ax.set_ylabel("")
+            if use_value_label:
+                ax.set_ylabel(value_label, fontsize=AXIS_LABEL_SIZE)
+            else:
+                ax.set_ylabel("")
             
         else:
             # For continuous features, calculate appropriate limits
@@ -503,19 +541,27 @@ def plot_sample_histograms(
                 stat=normalize,  # Use the normalize parameter directly
                 common_norm=False,
                 fill=True,
-                linewidth=1.5,
+                linewidth=LINE_THICKNESS,
                 alpha=alpha_bar
             )
             
             # Set the limits explicitly to match the bin range
             ax.set_xlim([vmin, vmax])
             
-            ax.set_ylabel(y_label, fontsize=AXIS_LABEL_SIZE)
-            ax.set_xlabel("")
+            # Only show y-axis label on first subplot of each row
+            if is_first_in_row:
+                ax.set_ylabel(y_label, fontsize=AXIS_LABEL_SIZE)
+            else:
+                ax.set_ylabel("")
             
+            if use_value_label:
+                ax.set_xlabel(value_label, fontsize=AXIS_LABEL_SIZE)
+            else:
+                ax.set_xlabel("")
+
         # Use the feature title from VIS_PARAMS instead of the raw feature name
-        ax.set_title(feature_title, fontsize=SUBPLOT_TITLE_SIZE, fontweight="bold")
-        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.set_title(feature_title, fontsize=SUBPLOT_TITLE_SIZE, fontweight="bold", pad=10)
+        ax.grid(True, linestyle='--', alpha=0.5, linewidth=LINE_THICKNESS, color=LINE_COLOR)
         ax.tick_params(axis='both', labelsize=TICK_LABEL_SIZE)
         # Remove legend from axes
         ax.get_legend().remove()
@@ -524,30 +570,62 @@ def plot_sample_histograms(
             legend_labels = list(unique_groups)
             legend_colors = palette
 
-    for i in range(n_features, len(axes)):
-        fig.delaxes(axes[i])
-    if subplot_adjust:
-        plt.subplots_adjust(**subplot_adjust)
-    else:
-        plt.tight_layout()
-    plt.suptitle(title, fontsize=TITLE_SIZE, y=1.0)
-    # Add combined legend below all subplots
+
+    if title:
+        plt.suptitle(title, fontsize=TITLE_SIZE, y=1.0)
+
+    # Create dedicated legend subplot that spans all columns
     if legend_labels is not None and legend_colors is not None:
+        # Create legend axis spanning all columns in the bottom row
+        legend_ax = fig.add_subplot(gs[n_rows_with_legend-1, :n_cols_features])  # Bottom row, all columns
+        
+        #
+        legend_ax.axis('off')  # Hide the axis
+        
         from matplotlib.patches import Patch
         legend_handles = [Patch(facecolor=col, edgecolor='k', label=str(lab), alpha=alpha_bar) for col, lab in zip(legend_colors, legend_labels)]
-        fig.legend(
-            handles=legend_handles,
-            loc='lower center',
-            bbox_to_anchor=(0.5, -0.04),
-            ncol=min(len(legend_handles), n_cols),
-            fontsize=LEGEND_TEXT_SIZE,
-            frameon=False,
-            title=compare_col,
-            title_fontsize=LEGEND_TITLE_SIZE
-        )
-    plt.tight_layout(rect=[0, 0.04, 1, 0.95])
+        
+        if legend_title:
+            legend_title_text = legend_title
+        else:
+            legend_title_text = compare_col
+        
+        if legend_rows == 1:
+            from matplotlib.lines import Line2D
+            legend_title_text += ': '
+            title_handle = Line2D([], [], color='none', marker=None, linestyle='None', label=legend_title_text)
+            legend_handles_with_title = [title_handle] + legend_handles
+            # Create legend in the dedicated subplot
+            legend = legend_ax.legend(
+                handles=legend_handles_with_title,
+                loc='lower left',
+                bbox_to_anchor=(0, 0),
+                ncol=len(legend_handles_with_title),
+                fontsize=LEGEND_TEXT_SIZE,
+                frameon=False,
+                borderpad=0.0,
+                labelspacing=0,
+                mode='expand',
+            )
+            
+        elif legend_rows == 2:
+            legend = legend_ax.legend(
+                handles=legend_handles,
+                loc='center',
+                ncol=min(len(legend_handles), 3),  # Adjust number of columns as needed
+                fontsize=LEGEND_TEXT_SIZE,
+                frameon=False,
+                bbox_to_anchor=(0.5, 0.5),
+                title=legend_title_text,
+                title_fontsize=LEGEND_TITLE_SIZE
+            )
+    
+    
+
+    #fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    fig.tight_layout(pad=0.5)
     if output_path:
-        plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+        plt.savefig(output_path, dpi=dpi,  transparent=True)
     return fig
 
 # %% Example usage
@@ -622,6 +700,22 @@ if __name__ == "__main__":
         binary_features=["LABEL"],
         title=f"Sample Histograms for {select_strategy}, {select_sample_size} samples (compare sites)",
         output_path=os.path.join(output_dir, f"{select_strategy}_{select_sample_size}_sample_histograms.png"),
+        figsize=fig_size,
+    )
+    
+    # Example with custom colors for comparing sites
+    custom_site_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7']
+    fig = plot_sample_histograms(
+        base_dir="../../data",
+        compare="site",
+        select_strategy=select_strategy,
+        select_sample_size=select_sample_size,
+        features_to_plot=features_to_plot,
+        categorical_features=categorical_mapping,
+        binary_features=["LABEL"],
+        custom_colors=custom_site_colors,
+        title=f"Sample Histograms with Custom Colors for {select_strategy}, {select_sample_size} samples",
+        output_path=os.path.join(output_dir, f"{select_strategy}_{select_sample_size}_custom_colors_sample_histograms.png"),
         figsize=fig_size,
     )
 # %%
