@@ -29,22 +29,71 @@ pipeline.py outlines the complete sampling and visualization process.
 
 Stevens Jr, D. L., & Olsen, A. R. (2004). Spatially balanced sampling of natural resources. _Journal of the American Statistical Association_, 99(465), 262-278. https://doi.org/10.1198/016214504000000250
 
-# Installation
+# Installation & Usage
 
-1. Create and activate the conda environment:
+## Option 1: Complete Environment Recreation (Recommended)
+
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/paulhosch/sarf_sampling.git
+   cd sarf_sampling
+   ```
+
+2. Create environment from environment.yml (cross-platform):
+   ```sh
+   conda env create -f environment.yml
+   conda activate sarf_sampling
+   ```
+
+## Option 2: Exact Environment Replication
+
+For exact replication of the development environment (macOS ARM64):
+
+```sh
+conda create --name sarf_sampling --file conda-explicit.txt
+conda activate sarf_sampling
+```
+
+## Option 3: Manual Installation
+
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/paulhosch/sarf_sampling.git
+   cd sarf_sampling
+   ```
+
+2. Create and activate a conda environment with Python 3.10:
+
    ```sh
    conda create -n sarf_sampling python=3.10 -y
    conda activate sarf_sampling
    ```
-2. Install requirements:
+
+3. Install core geospatial packages:
+
+   ```sh
+   conda install -c conda-forge geopandas rasterio -y
+   ```
+
+4. Install remaining requirements:
+
    ```sh
    pip install -r requirements.txt
    ```
-3. (Optional) Use as Jupyter kernel:
+
+5. (Optional) Use as Jupyter kernel:
    ```sh
    pip install ipykernel
    python -m ipykernel install --user --name sarf_sampling --display-name "Python (sarf_sampling)"
    ```
+
+## Environment Files
+
+- `environment.yml`: Cross-platform conda environment (recommended)
+- `conda-explicit.txt`: Exact environment specification with URLs and checksums
+- `requirements.txt`: Pip-installable packages for manual installation
 
 # File Structure
 
